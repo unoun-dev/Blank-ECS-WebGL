@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.Rendering;
 
 using Unity.Entities;
@@ -9,57 +11,108 @@ public class Manager : MonoBehaviour
 {
     [SerializeField] Mesh mesh;
     [SerializeField] Material material;
-    [SerializeField] Texture texture;
+    [SerializeField] Camera MainCamera;
     MeshInstanceRenderer render;
     EntityArchetype archetype;
     EntityManager manager;
-    // Use this for initialization
+    List <MeshInstanceRenderer> RenderList = new List <MeshInstanceRenderer>();
+
     void Start()
     {
+        Cache();
+
         render = new MeshInstanceRenderer
         {
-            castShadows = ShadowCastingMode.On,
+            castShadows    = ShadowCastingMode.On,
             receiveShadows = true,
-            material = new Material(material)
+            material       = new Material(material)
             {
                 enableInstancing = true,
-                mainTexture = texture,
             },
-            mesh = mesh,
+            mesh    = mesh,
             subMesh = 0,
         };
         PlayerLoopManager.RegisterDomainUnload(DestroyAll, 10000);
         var world = World.Active = new World("x");
         World.Active.CreateManager(typeof(EndFrameTransformSystem));
-        World.Active.CreateManager(typeof(CountUpSystem), GameObject.Find("Count").GetComponent<TMPro.TMP_Text>());
-        World.Active.CreateManager<MeshInstanceRendererSystem>().ActiveCamera = GetComponent<Camera>();
+        World.Active.CreateManager(typeof(CountUpSystem), GameObject.Find("Count").GetComponent <TMPro.TMP_Text>());
+        World.Active.CreateManager <MeshInstanceRendererSystem>().ActiveCamera = GetComponent <Camera>();
         ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
 
-        manager = world.GetExistingManager<EntityManager>();
-        archetype = manager.CreateArchetype(ComponentType.Create<Position>(), ComponentType.Create<MeshInstanceRenderer>(), ComponentType.Create<Static>());
+        manager   = world.GetExistingManager <EntityManager>();
+        archetype = manager.CreateArchetype(ComponentType.Create <Position>(), ComponentType.Create <MeshInstanceRenderer>(), ComponentType.Create <Static>());
+
+        // for (int i = 0; i < 1000000; i++)
+        for (int i = 0; i < 100000; i++)
+        {
+            CreateCube();
+        }
     }
 
-    Matrix4x4[] matrices = new Matrix4x4[1]{
-        Matrix4x4.identity
-    };
-
-    // Update is called once per frame
     void Update()
     {
-        // Graphics.DrawMesh(render.mesh, matrices[0], render.material, 0, null, 0, null, render.castShadows, render.receiveShadows, null, false);
-        // Graphics.DrawMeshInstanced(render.mesh, 0, render.material, matrices, matrices.Length, null, render.castShadows, render.receiveShadows, 0, null, LightProbeUsage.Off, null);
-        if (!Input.GetMouseButton(0)) return;
+        Ray        ray = MainCamera.ScreenPointToRay(Input.mousePosition);
+        RaycastHit hit;
+        if (Physics.Raycast(ray, out hit, 10.0f))
+        {
+            Debug.Log(hit.collider.gameObject.transform.position);
+        }
+    }
+
+    private void Cache()
+    {
+        var colorList = new List <Color>();
+        colorList.Add("#3ACF62".ToColor());
+        colorList.Add("#F7F0BB".ToColor());
+        colorList.Add("#F8165F".ToColor());
+
+        foreach (var color in colorList)
+        {
+            render = new MeshInstanceRenderer
+            {
+                castShadows    = ShadowCastingMode.On,
+                receiveShadows = true,
+                material       = new Material(material)
+                {
+                    enableInstancing = true,
+                    color            = color,
+                },
+                mesh    = mesh,
+                subMesh = 0,
+            };
+
+            RenderList.Add(render);
+        }
+    }
+
+    private void CreateCube()
+    {
         var e = manager.CreateEntity(archetype);
         manager.SetComponentData(e, new Position
         {
             Value = new Unity.Mathematics.float3((Random.value - 0.5f) * 10, (Random.value - 0.5f) * 10, (Random.value) * 10)
         });
-        manager.SetSharedComponentData(e, render);
+
+        int rand = UnityEngine.Random.Range(0, RenderList.Count);
+        manager.SetSharedComponentData(e, RenderList[rand]);
     }
 
     static void DestroyAll()
     {
         World.DisposeAllWorlds();
         ScriptBehaviourUpdateOrder.UpdatePlayerLoop();
+    }
+}
+
+public static class StringExtension
+{
+    public static Color ToColor(this string self)
+    {
+        var color = default(Color);
+        if (!ColorUtility.TryParseHtmlString(self, out color)) {
+            Debug.LogWarning("Unknown color code... " + self);
+        }
+
+        return color;
     }
 }
